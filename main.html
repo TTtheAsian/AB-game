@@ -43,7 +43,7 @@
             padding: 5px 10px;
             cursor: pointer;
         }
-        #timer, #rounds {
+        #rounds {
             font-weight: bold;
         }
         #gameStats, #gameHistory {
@@ -63,10 +63,10 @@
             <button id="startGame">開始遊戲</button>
             <button id="restart">重新開始</button>
             <button id="showRules">遊戲規則</button>
-            <button id="getHint">獲取提示</button>
+            <button id="getHint" style="display: none;">天眼通</button>
         </div>
         <div>
-            <span>時間：</span><span id="timer">00:00</span>
+            <span>時間：</span><span id="currentTime"></span>
             <span>回合：</span><span id="rounds">0</span>
         </div>
         <div class="controls">
@@ -98,13 +98,38 @@
         let playerNumber;
         let computerNumber;
         let gameStarted = false;
-        let timer;
-        let seconds = 0;
         let rounds = 0;
         let difficulty = 4;
         let gamesPlayed = 0;
         let gamesWon = 0;
         let totalGuesses = 0;
+
+        let ctrlPressCount = 0;
+        let ctrlPressTimer = null;
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Control') {
+                ctrlPressCount++;
+                if (ctrlPressCount === 1) {
+                    ctrlPressTimer = setTimeout(() => {
+                        ctrlPressCount = 0;
+                    }, 1000);
+                }
+                if (ctrlPressCount === 5) {
+                    clearTimeout(ctrlPressTimer);
+                    showAllNumbers();
+                    ctrlPressCount = 0;
+                }
+            }
+        });
+
+        function showAllNumbers() {
+            if (gameStarted) {
+                alert(`玩家數字: ${playerNumber}\n電腦數字: ${computerNumber}`);
+            } else {
+                alert('遊戲尚未開始');
+            }
+        }
 
         const startGameBtn = document.getElementById('startGame');
         const restartBtn = document.getElementById('restart');
@@ -123,6 +148,14 @@
         });
         guessButton.addEventListener('click', makeGuess);
 
+        function updateCurrentTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+        }
+
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
+
         function startGame() {
             difficulty = parseInt(difficultySelect.value);
             playerNumber = promptForValidNumber(`請輸入你的${difficulty}位不重複數字：`);
@@ -133,13 +166,9 @@
             startGameBtn.disabled = true;
             difficultySelect.disabled = true;
             rounds = 0;
-            seconds = 0;
             updateDisplay();
-            timer = setInterval(() => {
-                seconds++;
-                updateDisplay();
-            }, 1000);
             playSound('start');
+            window.hintMask = null;
         }
 
         function promptForValidNumber(message) {
@@ -160,15 +189,15 @@
         }
 
         function restartGame() {
-            clearInterval(timer);
             gameStarted = false;
             startGameBtn.disabled = false;
             difficultySelect.disabled = false;
             document.getElementById('playerGuesses').innerHTML = '';
             document.getElementById('computerGuesses').innerHTML = '';
             rounds = 0;
-            seconds = 0;
             updateDisplay();
+            getHintBtn.style.display = 'none';
+            window.hintMask = null;
         }
 
         function generateRandomNumber() {
@@ -195,6 +224,8 @@
             }
 
             rounds++;
+            updateDisplay();
+
             let playerResult = checkGuess(playerGuess, computerNumber);
             document.getElementById('playerGuesses').innerHTML += `你猜: ${playerGuess}, 結果: ${playerResult}<br>`;
 
@@ -212,8 +243,11 @@
                 return;
             }
 
-            updateDisplay();
             guessInput.value = '';
+
+            if (rounds === 20) {
+                getHintBtn.style.display = 'inline-block';
+            }
         }
 
         function checkGuess(guess, target) {
@@ -234,18 +268,10 @@
         }
 
         function updateDisplay() {
-            document.getElementById('timer').textContent = formatTime(seconds);
             document.getElementById('rounds').textContent = rounds;
         }
 
-        function formatTime(totalSeconds) {
-            let minutes = Math.floor(totalSeconds / 60);
-            let seconds = totalSeconds % 60;
-            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-
         function endGame(winner) {
-            clearInterval(timer);
             gameStarted = false;
             gamesPlayed++;
             totalGuesses += rounds;
@@ -292,8 +318,16 @@
                 alert('遊戲還沒開始，無法獲取提示。');
                 return;
             }
-            let hint = `提示：電腦的數字中包含 ${computerNumber[Math.floor(Math.random() * difficulty)]}`;
-            alert(hint);
+            if (!window.hintMask) {
+                window.hintMask = Array(difficulty).fill('*');
+                let revealCount = Math.ceil(difficulty / 2);
+                let indices = Array.from({length: difficulty}, (_, i) => i);
+                for (let i = 0; i < revealCount; i++) {
+                    let index = indices.splice(Math.floor(Math.random() * indices.length), 1)[0];
+                    window.hintMask[index] = computerNumber[index];
+                }
+            }
+            alert(`提示：${window.hintMask.join('')}\n沒志氣，還要人家給提示`);
         }
 
         function playSound(type) {
