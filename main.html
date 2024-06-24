@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猜數字</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .game-windows {
+            display: flex;
+            gap: 20px;
+        }
+        .game-window {
+            width: 300px;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #timer, #rounds {
+            font-weight: bold;
+        }
+        #gameStats, #gameHistory {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>猜數字</h1>
+        <div class="controls">
+            <select id="difficulty">
+                <option value="4">4位數（簡單）</option>
+                <option value="5">5位數（中等）</option>
+                <option value="6">6位數（困難）</option>
+            </select>
+            <button id="startGame">開始遊戲</button>
+            <button id="restart">重新開始</button>
+            <button id="showRules">遊戲規則</button>
+            <button id="getHint">獲取提示</button>
+        </div>
+        <div>
+            <span>時間：</span><span id="timer">00:00</span>
+            <span>回合：</span><span id="rounds">0</span>
+        </div>
+        <div class="controls">
+            <input type="text" id="guessInput" placeholder="輸入你的猜測">
+            <button id="guessButton">猜！</button>
+        </div>
+        <div class="game-windows">
+            <div>
+                <h3>你的猜測</h3>
+                <div class="game-window" id="playerGuesses"></div>
+            </div>
+            <div>
+                <h3>電腦的猜測</h3>
+                <div class="game-window" id="computerGuesses"></div>
+            </div>
+        </div>
+        <div id="gameStats">
+            <h3>遊戲統計</h3>
+            <p>勝率：<span id="winRate">0%</span></p>
+            <p>平均猜測次數：<span id="avgGuesses">0</span></p>
+        </div>
+        <div id="gameHistory">
+            <h3>遊戲歷史</h3>
+            <ul id="historyList"></ul>
+        </div>
+    </div>
+
+    <script>
+        let playerNumber;
+        let computerNumber;
+        let gameStarted = false;
+        let timer;
+        let seconds = 0;
+        let rounds = 0;
+        let difficulty = 4;
+        let gamesPlayed = 0;
+        let gamesWon = 0;
+        let totalGuesses = 0;
+
+        const startGameBtn = document.getElementById('startGame');
+        const restartBtn = document.getElementById('restart');
+        const showRulesBtn = document.getElementById('showRules');
+        const getHintBtn = document.getElementById('getHint');
+        const difficultySelect = document.getElementById('difficulty');
+        const guessInput = document.getElementById('guessInput');
+        const guessButton = document.getElementById('guessButton');
+
+        startGameBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', restartGame);
+        showRulesBtn.addEventListener('click', showRules);
+        getHintBtn.addEventListener('click', getHint);
+        difficultySelect.addEventListener('change', (e) => {
+            difficulty = parseInt(e.target.value);
+        });
+        guessButton.addEventListener('click', makeGuess);
+
+        function startGame() {
+            difficulty = parseInt(difficultySelect.value);
+            playerNumber = promptForValidNumber(`請輸入你的${difficulty}位不重複數字：`);
+            if (!playerNumber) return;
+            
+            computerNumber = generateRandomNumber();
+            gameStarted = true;
+            startGameBtn.disabled = true;
+            difficultySelect.disabled = true;
+            rounds = 0;
+            seconds = 0;
+            updateDisplay();
+            timer = setInterval(() => {
+                seconds++;
+                updateDisplay();
+            }, 1000);
+            playSound('start');
+        }
+
+        function promptForValidNumber(message) {
+            while (true) {
+                let input = prompt(message);
+                if (input === null) return null; // 用戶取消
+                if (isValidNumber(input)) {
+                    return input;
+                } else {
+                    alert(`請輸入有效的${difficulty}位不重複數字`);
+                }
+            }
+        }
+
+        function isValidNumber(num) {
+            if (num.length !== difficulty || isNaN(num)) return false;
+            return new Set(num).size === difficulty;
+        }
+
+        function restartGame() {
+            clearInterval(timer);
+            gameStarted = false;
+            startGameBtn.disabled = false;
+            difficultySelect.disabled = false;
+            document.getElementById('playerGuesses').innerHTML = '';
+            document.getElementById('computerGuesses').innerHTML = '';
+            rounds = 0;
+            seconds = 0;
+            updateDisplay();
+        }
+
+        function generateRandomNumber() {
+            let nums = Array.from({length: 10}, (_, i) => i);
+            let result = '';
+            for (let i = 0; i < difficulty; i++) {
+                let index = Math.floor(Math.random() * nums.length);
+                result += nums[index];
+                nums.splice(index, 1);
+            }
+            return result;
+        }
+
+        function makeGuess() {
+            if (!gameStarted) {
+                alert('請先開始遊戲！');
+                return;
+            }
+
+            let playerGuess = guessInput.value;
+            if (!isValidNumber(playerGuess)) {
+                alert(`請輸入有效的${difficulty}位不重複數字`);
+                return;
+            }
+
+            rounds++;
+            let playerResult = checkGuess(playerGuess, computerNumber);
+            document.getElementById('playerGuesses').innerHTML += `你猜: ${playerGuess}, 結果: ${playerResult}<br>`;
+
+            if (playerResult === `${difficulty}A0B`) {
+                endGame('player');
+                return;
+            }
+
+            let computerGuess = generateSmartGuess();
+            let computerResult = checkGuess(computerGuess, playerNumber);
+            document.getElementById('computerGuesses').innerHTML += `電腦猜: ${computerGuess}, 結果: ${computerResult}<br>`;
+
+            if (computerResult === `${difficulty}A0B`) {
+                endGame('computer');
+                return;
+            }
+
+            updateDisplay();
+            guessInput.value = '';
+        }
+
+        function checkGuess(guess, target) {
+            let a = 0, b = 0;
+            for (let i = 0; i < difficulty; i++) {
+                if (guess[i] === target[i]) {
+                    a++;
+                } else if (target.includes(guess[i])) {
+                    b++;
+                }
+            }
+            return `${a}A${b}B`;
+        }
+
+        function generateSmartGuess() {
+            // 這裡可以實現更智能的猜測算法
+            return generateRandomNumber();
+        }
+
+        function updateDisplay() {
+            document.getElementById('timer').textContent = formatTime(seconds);
+            document.getElementById('rounds').textContent = rounds;
+        }
+
+        function formatTime(totalSeconds) {
+            let minutes = Math.floor(totalSeconds / 60);
+            let seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function endGame(winner) {
+            clearInterval(timer);
+            gameStarted = false;
+            gamesPlayed++;
+            totalGuesses += rounds;
+            if (winner === 'player') {
+                alert('恭喜你贏了！');
+                gamesWon++;
+                playSound('win');
+            } else {
+                alert('電腦贏了！');
+                playSound('lose');
+            }
+            updateGameStats();
+            updateGameHistory(winner);
+        }
+
+        function updateGameStats() {
+            const winRate = (gamesWon / gamesPlayed * 100).toFixed(2);
+            const avgGuesses = (totalGuesses / gamesPlayed).toFixed(2);
+            document.getElementById('winRate').textContent = winRate + '%';
+            document.getElementById('avgGuesses').textContent = avgGuesses;
+        }
+
+        function updateGameHistory(winner) {
+            const historyList = document.getElementById('historyList');
+            const listItem = document.createElement('li');
+            listItem.textContent = `遊戲 #${gamesPlayed}: ${winner === 'player' ? '你贏了' : '電腦贏了'} (${rounds} 回合)`;
+            historyList.appendChild(listItem);
+        }
+
+        function showRules() {
+            alert(`
+遊戲規則：
+1. 玩家和電腦各自選擇一個${difficulty}位數字，每個數字都不同。
+2. 輪流猜對方的數字，每次猜測後會得到結果：
+   - A 表示位置及值都正確的數字數量
+   - B 表示值正確但位置錯誤的數字數量
+3. 誰先猜中對方的數字就獲勝。
+祝你好運！
+            `);
+        }
+
+        function getHint() {
+            if (!gameStarted) {
+                alert('遊戲還沒開始，無法獲取提示。');
+                return;
+            }
+            let hint = `提示：電腦的數字中包含 ${computerNumber[Math.floor(Math.random() * difficulty)]}`;
+            alert(hint);
+        }
+
+        function playSound(type) {
+            // 這裡可以實現播放音效的邏輯
+            console.log(`Playing ${type} sound`);
+        }
+    </script>
+</body>
+</html>
